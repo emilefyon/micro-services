@@ -8,7 +8,6 @@ const { errorHandler } = require('../middleware/errorHandler');
 const { logger } = require('../utils/logger');
 const authRoutes = require('../routes/auth.routes');
 const pdfConverterRoutes = require('../services/pdfImageConverter/routes');
-const { authenticateToken } = require('../middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -57,7 +56,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // Routes
 app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/pdf', authenticateToken, pdfConverterRoutes);
+app.use('/api/v1/pdf', pdfConverterRoutes); // Removed authenticateToken middleware
 
 // Error handling
 app.use(errorHandler);
