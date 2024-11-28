@@ -11,6 +11,7 @@ const pdfConverterRoutes = require('../services/pdfImageConverter/routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
 // Security middleware
 app.use(helmet());
@@ -35,7 +36,8 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: `http://localhost:${PORT}`
+        url: BASE_URL,
+        description: 'Current Environment'
       }
     ],
     components: {
@@ -54,15 +56,23 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
+// Serve OpenAPI specification as JSON
+app.get('/openapi.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerDocs);
+});
+
 // Routes
 app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/pdf', pdfConverterRoutes); // Removed authenticateToken middleware
+app.use('/api/v1/pdf', pdfConverterRoutes);
 
 // Error handling
 app.use(errorHandler);
 
 app.listen(PORT, () => {
   logger.info(`Gateway service running on port ${PORT}`);
+  logger.info(`API Documentation available at ${BASE_URL}/api-docs`);
+  logger.info(`OpenAPI specification available at ${BASE_URL}/openapi.json`);
 });
 
 module.exports = app;
