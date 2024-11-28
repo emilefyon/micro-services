@@ -1,47 +1,33 @@
-const { fromBuffer } = require('pdf2pic');
-const sharp = require('sharp');
+const gm = require('gm');
 const archiver = require('archiver');
-const { Readable } = require('stream');
+const { promisify } = require('util');
 const { logger } = require('../../utils/logger');
 
-const getImageOptions = (format) => {
-  const baseOptions = {
-    density: 300,
-    quality: 100,
-    preserveAspectRatio: true,
-    format: format === 'tifflzw' ? 'tiff' : format.replace(/png.*/, 'png')
-  };
-
-  switch (format) {
-    case 'pnggray':
-      return { ...baseOptions, grayscale: true };
-    case 'png256':
-      return { ...baseOptions, colors: 256 };
-    case 'png16':
-      return { ...baseOptions, colors: 16 };
-    default:
-      return baseOptions;
-  }
+const gmToBuffer = (gmObject) => {
+  return new Promise((resolve, reject) => {
+    gmObject.toBuffer((err, buffer) => {
+      if (err) reject(err);
+      else resolve(buffer);
+    });
+  });
 };
 
-const processImage = async (imageBuffer, format) => {
-  let sharpInstance = sharp(imageBuffer);
-
+const getImageOptions = (format) => {
   switch (format) {
     case 'tifflzw':
-      return sharpInstance.tiff({ compression: 'lzw' }).toBuffer();
+      return { format: 'TIFF', compression: 'LZW' };
     case 'jpeg':
-      return sharpInstance.jpeg({ quality: 90 }).toBuffer();
+      return { format: 'JPEG', quality: 90 };
     case 'pnggray':
-      return sharpInstance.grayscale().png().toBuffer();
+      return { format: 'PNG', type: 'Grayscale' };
     case 'png256':
-      return sharpInstance.png({ palette: true }).toBuffer();
+      return { format: 'PNG', colors: 256 };
     case 'png16':
-      return sharpInstance.png({ palette: true, colors: 16 }).toBuffer();
+      return { format: 'PNG', colors: 16 };
     case 'png16m':
-      return sharpInstance.png().toBuffer();
+      return { format: 'PNG' };
     default:
-      return sharpInstance.png().toBuffer();
+      return { format: 'PNG' };
   }
 };
 
@@ -57,7 +43,7 @@ const createZipArchive = async (images) => {
     archive.on('error', err => reject(err));
 
     images.forEach((image, index) => {
-      archive.append(image, { name: `page-${index + 1}.png` });
+      archive.append(image, { name: `page-${index + 1}.${image.format.toLowerCase()}` });
     });
 
     archive.finalize();
@@ -67,63 +53,75 @@ const createZipArchive = async (images) => {
 const convertPdfToImage = async (file, params) => {
   try {
     const { startPage, endPage, singleFile, outputFormat } = params;
-    
     const options = getImageOptions(outputFormat);
-    const converter = fromBuffer(file.buffer, options);
     
-    // Convert pages to images
-    const pagePromises = [];
-    const start = Math.max(1, startPage + 1); // pdf2pic uses 1-based indexing
-    const end = endPage === 0 ? -1 : endPage + 1;
+    // Initialize GraphicsMagick with the PDF buffer
+    let gmInstance = gm(file.buffer, 'input.pdf');
     
-    if (end !== -1 && start > end) {
+    // Get the total number of pages
+    const identify = promisify(gmInstance.identify.bind(gmInstance));
+    const info = await identify();
+    const totalPages = info.numberOfPages || 1;
+    
+    // Calculate page range
+    const start = Math.max(0, startPage);
+    const end = endPage === 0 ? totalPages - 1 : Math.min(endPage, totalPages - 1);
+    
+    if (start > end) {
       throw new Error('Invalid page range');
     }
 
     logger.info(`Converting PDF pages ${start} to ${end} to ${outputFormat} format`);
     
-    if (end === -1) {
-      // Convert all pages
-      pagePromises.push(converter.bulk(-1));
-    } else {
-      // Convert specific range
-      for (let i = start; i <= end; i++) {
-        pagePromises.push(converter.convertToImage(i));
+    // Convert pages to images
+    const pagePromises = [];
+    for (let i = start; i <= end; i++) {
+      let pageGm = gm(file.buffer, 'input.pdf')
+        .selectFrame(i)
+        .density(300, 300);
+
+      // Apply format-specific options
+      if (options.format === 'TIFF') {
+        pageGm = pageGm.compress(options.compression);
+      } else if (options.format === 'JPEG') {
+        pageGm = pageGm.quality(options.quality);
       }
+
+      if (options.type === 'Grayscale') {
+        pageGm = pageGm.type('Grayscale');
+      }
+
+      if (options.colors) {
+        pageGm = pageGm.colors(options.colors);
+      }
+
+      pageGm = pageGm.setFormat(options.format);
+      pagePromises.push(gmToBuffer(pageGm));
     }
 
-    const convertedPages = await Promise.all(pagePromises);
-    const images = await Promise.all(
-      convertedPages.flat().map(page => processImage(page.base64, outputFormat))
-    );
+    const images = await Promise.all(pagePromises);
 
     if (singleFile && images.length > 0) {
-      // Combine all pages vertically
-      const dimensions = await Promise.all(
-        images.map(img => sharp(img).metadata())
-      );
-
-      const totalHeight = dimensions.reduce((sum, dim) => sum + dim.height, 0);
-      const width = dimensions[0].width;
-
-      return await sharp({
-        create: {
-          width,
-          height: totalHeight,
-          channels: 4,
-          background: { r: 255, g: 255, b: 255, alpha: 1 }
-        }
-      })
-      .composite(images.map((img, i) => ({
-        input: img,
-        top: dimensions.slice(0, i).reduce((sum, dim) => sum + dim.height, 0),
-        left: 0
-      })))
-      .toFormat(outputFormat === 'tifflzw' ? 'tiff' : outputFormat.replace(/png.*/, 'png'))
-      .toBuffer();
+      // For single file output, append all images vertically
+      const appendedGm = gm(images[0]);
+      for (let i = 1; i < images.length; i++) {
+        appendedGm.append(images[i]);
+      }
+      
+      // Apply final format settings
+      if (options.format === 'TIFF') {
+        appendedGm.compress(options.compression);
+      } else if (options.format === 'JPEG') {
+        appendedGm.quality(options.quality);
+      }
+      
+      return await gmToBuffer(appendedGm.setFormat(options.format));
     } else {
       // Return zip archive for multiple pages
-      return await createZipArchive(images);
+      return await createZipArchive(images.map(img => ({
+        buffer: img,
+        format: options.format
+      })));
     }
   } catch (error) {
     logger.error('PDF conversion error:', error);
