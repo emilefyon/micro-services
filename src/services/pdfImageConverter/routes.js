@@ -17,7 +17,7 @@ const upload = multer({
  *     summary: Convert PDF pages to images
  *     description: |
  *       Converts specified pages from a PDF file to image format. The service supports various output formats
- *       and can process single or multiple pages.
+ *       and can process single or multiple pages with configurable quality settings.
  *     tags: [PDF]
  *     requestBody:
  *       required: true
@@ -48,12 +48,24 @@ const upload = multer({
  *                 default: png16m
  *                 description: |
  *                   Image output format:
- *                   * tifflzw - TIFF with LZW compression
- *                   * jpeg - JPEG format (lossy compression)
- *                   * pnggray - PNG grayscale (8-bit)
- *                   * png256 - PNG with 256 colors
- *                   * png16 - PNG with 16 colors
- *                   * png16m - PNG with millions of colors (24-bit)
+ *                   * tifflzw - TIFF with LZW compression (best for documents)
+ *                   * jpeg - JPEG format with configurable quality (best for photos)
+ *                   * pnggray - PNG grayscale (8-bit, best for black and white)
+ *                   * png256 - PNG with 256 colors (good balance of quality and size)
+ *                   * png16 - PNG with 16 colors (smallest file size)
+ *                   * png16m - PNG with millions of colors (best quality)
+ *               dpi:
+ *                 type: integer
+ *                 minimum: 72
+ *                 maximum: 600
+ *                 default: 150
+ *                 description: Resolution in dots per inch. Higher values mean better quality but larger files
+ *               quality:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 100
+ *                 default: 90
+ *                 description: Image quality for JPEG format. Higher values mean better quality but larger files
  *     responses:
  *       200:
  *         description: PDF successfully converted to image(s)
@@ -93,7 +105,9 @@ router.post('/convert-to-image',
       const result = await convertPdfToImage(req.file, req.body);
       
       if (req.body.singleFile) {
-        res.set('Content-Type', `image/${req.body.outputFormat === 'tifflzw' ? 'tiff' : req.body.outputFormat.replace(/png.*/, 'png')}`);
+        const format = req.body.outputFormat === 'tifflzw' ? 'tiff' : 
+                      req.body.outputFormat.replace(/png.*/, 'png');
+        res.set('Content-Type', `image/${format}`);
       } else {
         res.set('Content-Type', 'application/zip');
         res.set('Content-Disposition', 'attachment; filename=converted-pages.zip');

@@ -12,12 +12,12 @@ const gmToBuffer = (gmObject) => {
   });
 };
 
-const getImageOptions = (format) => {
+const getImageOptions = (format, quality) => {
   switch (format) {
     case 'tifflzw':
       return { format: 'TIFF', compression: 'LZW' };
     case 'jpeg':
-      return { format: 'JPEG', quality: 90 };
+      return { format: 'JPEG', quality };
     case 'pnggray':
       return { format: 'PNG', type: 'Grayscale' };
     case 'png256':
@@ -43,7 +43,7 @@ const createZipArchive = async (images) => {
     archive.on('error', err => reject(err));
 
     images.forEach((image, index) => {
-      archive.append(image, { name: `page-${index + 1}.${image.format.toLowerCase()}` });
+      archive.append(image.buffer, { name: `page-${index + 1}.${image.format.toLowerCase()}` });
     });
 
     archive.finalize();
@@ -52,8 +52,8 @@ const createZipArchive = async (images) => {
 
 const convertPdfToImage = async (file, params) => {
   try {
-    const { startPage, endPage, singleFile, outputFormat } = params;
-    const options = getImageOptions(outputFormat);
+    const { startPage, endPage, singleFile, outputFormat, dpi, quality } = params;
+    const options = getImageOptions(outputFormat, quality);
     
     // Initialize GraphicsMagick with the PDF buffer
     let gmInstance = gm(file.buffer, 'input.pdf');
@@ -71,14 +71,14 @@ const convertPdfToImage = async (file, params) => {
       throw new Error('Invalid page range');
     }
 
-    logger.info(`Converting PDF pages ${start} to ${end} to ${outputFormat} format`);
+    logger.info(`Converting PDF pages ${start} to ${end} to ${outputFormat} format at ${dpi} DPI`);
     
     // Convert pages to images
     const pagePromises = [];
     for (let i = start; i <= end; i++) {
       let pageGm = gm(file.buffer, 'input.pdf')
         .selectFrame(i)
-        .density(300, 300);
+        .density(dpi, dpi);
 
       // Apply format-specific options
       if (options.format === 'TIFF') {
