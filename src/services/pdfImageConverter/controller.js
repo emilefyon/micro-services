@@ -1,21 +1,31 @@
-const { PDFDocument } = require('pdf-lib');
+const { fromBuffer } = require('pdf2pic');
 const sharp = require('sharp');
+const archiver = require('archiver');
+const { Readable } = require('stream');
 const { logger } = require('../../utils/logger');
 
-const renderPageToImage = async (page, format) => {
-  // Get page dimensions
-  const { width, height } = page.getSize();
-  
-  // Convert PDF page to PNG (pdf-lib doesn't support direct rendering,
-  // in a production environment you'd want to use a PDF rendering library like pdf2pic)
-  const scale = 2; // Increase resolution
-  const pngImage = await page.render({
-    width: width * scale,
-    height: height * scale,
-  }).toBuffer();
+const getImageOptions = (format) => {
+  const baseOptions = {
+    density: 300,
+    quality: 100,
+    preserveAspectRatio: true,
+    format: format === 'tifflzw' ? 'tiff' : format.replace(/png.*/, 'png')
+  };
 
-  // Process the image according to the requested format
-  let sharpInstance = sharp(pngImage);
+  switch (format) {
+    case 'pnggray':
+      return { ...baseOptions, grayscale: true };
+    case 'png256':
+      return { ...baseOptions, colors: 256 };
+    case 'png16':
+      return { ...baseOptions, colors: 16 };
+    default:
+      return baseOptions;
+  }
+};
+
+const processImage = async (imageBuffer, format) => {
+  let sharpInstance = sharp(imageBuffer);
 
   switch (format) {
     case 'tifflzw':
@@ -35,52 +45,85 @@ const renderPageToImage = async (page, format) => {
   }
 };
 
+const createZipArchive = async (images) => {
+  return new Promise((resolve, reject) => {
+    const archive = archiver('zip', {
+      zlib: { level: 9 }
+    });
+
+    const chunks = [];
+    archive.on('data', chunk => chunks.push(chunk));
+    archive.on('end', () => resolve(Buffer.concat(chunks)));
+    archive.on('error', err => reject(err));
+
+    images.forEach((image, index) => {
+      archive.append(image, { name: `page-${index + 1}.png` });
+    });
+
+    archive.finalize();
+  });
+};
+
 const convertPdfToImage = async (file, params) => {
   try {
     const { startPage, endPage, singleFile, outputFormat } = params;
     
-    // Load PDF document
-    const pdfDoc = await PDFDocument.load(file.buffer);
-    const pageCount = pdfDoc.getPageCount();
+    const options = getImageOptions(outputFormat);
+    const converter = fromBuffer(file.buffer, options);
     
-    // Validate page range
-    const start = Math.max(0, startPage);
-    const end = endPage === 0 ? pageCount - 1 : Math.min(endPage, pageCount - 1);
+    // Convert pages to images
+    const pagePromises = [];
+    const start = Math.max(1, startPage + 1); // pdf2pic uses 1-based indexing
+    const end = endPage === 0 ? -1 : endPage + 1;
     
-    if (start > end) {
+    if (end !== -1 && start > end) {
       throw new Error('Invalid page range');
     }
 
     logger.info(`Converting PDF pages ${start} to ${end} to ${outputFormat} format`);
     
-    // Convert pages to images
-    const pages = [];
-    for (let i = start; i <= end; i++) {
-      const page = pdfDoc.getPage(i);
-      const pageImage = await renderPageToImage(page, outputFormat);
-      pages.push(pageImage);
+    if (end === -1) {
+      // Convert all pages
+      pagePromises.push(converter.bulk(-1));
+    } else {
+      // Convert specific range
+      for (let i = start; i <= end; i++) {
+        pagePromises.push(converter.convertToImage(i));
+      }
     }
 
-    if (singleFile && pages.length > 0) {
-      // Combine all pages vertically into a single image
+    const convertedPages = await Promise.all(pagePromises);
+    const images = await Promise.all(
+      convertedPages.flat().map(page => processImage(page.base64, outputFormat))
+    );
+
+    if (singleFile && images.length > 0) {
+      // Combine all pages vertically
+      const dimensions = await Promise.all(
+        images.map(img => sharp(img).metadata())
+      );
+
+      const totalHeight = dimensions.reduce((sum, dim) => sum + dim.height, 0);
+      const width = dimensions[0].width;
+
       return await sharp({
         create: {
-          width: pages[0].width,
-          height: pages.reduce((total, page) => total + page.height, 0),
+          width,
+          height: totalHeight,
           channels: 4,
           background: { r: 255, g: 255, b: 255, alpha: 1 }
         }
       })
-      .composite(pages.map((page, index) => ({
-        input: page,
-        top: index * page.height,
+      .composite(images.map((img, i) => ({
+        input: img,
+        top: dimensions.slice(0, i).reduce((sum, dim) => sum + dim.height, 0),
         left: 0
       })))
       .toFormat(outputFormat === 'tifflzw' ? 'tiff' : outputFormat.replace(/png.*/, 'png'))
       .toBuffer();
     } else {
-      // Return array of page images
-      return pages;
+      // Return zip archive for multiple pages
+      return await createZipArchive(images);
     }
   } catch (error) {
     logger.error('PDF conversion error:', error);
