@@ -16,8 +16,6 @@ const upload = multer({
  *   post:
  *     summary: Convert PDF pages to images
  *     tags: [PDF]
- *     security:
- *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -44,6 +42,11 @@ const upload = multer({
  *     responses:
  *       200:
  *         description: PDF successfully converted to image(s)
+ *         content:
+ *           image/*:
+ *             schema:
+ *               type: string
+ *               format: binary
  *       400:
  *         description: Invalid parameters or file
  *       500:
@@ -54,8 +57,9 @@ router.post('/convert-to-image',
   validateConvertParams,
   async (req, res) => {
     try {
-      const result = await convertPdfToImage(req.file, req.body);
-      res.json(result);
+      const image = await convertPdfToImage(req.file, req.body);
+      res.set('Content-Type', 'image/jpeg');
+      res.send(image);
     } catch (error) {
       logger.error('PDF conversion error:', error);
       res.status(500).json({ error: 'PDF conversion failed' });

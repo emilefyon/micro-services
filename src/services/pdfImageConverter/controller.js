@@ -20,21 +20,20 @@ const convertPdfToImage = async (file, params) => {
 
     logger.info(`Converting PDF pages ${start} to ${end} to ${outputFormat} format`);
     
-    // Process pages and convert to images
-    // Note: This is a placeholder for the actual PDF to image conversion logic
-    // In a real implementation, you would use a PDF rendering library
-    // that can convert PDF pages to images
-    
-    return {
-      message: 'PDF conversion completed',
-      pages: {
-        start,
-        end,
-        total: end - start + 1
-      },
-      format: outputFormat,
-      singleFile
-    };
+    // For demonstration, we'll create a sample image
+    // In a real implementation, you would render the PDF pages to images
+    const image = await sharp({
+      create: {
+        width: 800,
+        height: 1000,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
+      }
+    })
+    .jpeg()
+    .toBuffer();
+
+    return image;
   } catch (error) {
     logger.error('PDF conversion error:', error);
     throw error;
