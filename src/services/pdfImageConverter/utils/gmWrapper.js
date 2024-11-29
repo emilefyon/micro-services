@@ -1,4 +1,4 @@
-const gm = require('gm');
+const gm = require('gm').subClass({ imageMagick: true });
 const { promisify } = require('util');
 const { logger } = require('../../../utils/logger');
 

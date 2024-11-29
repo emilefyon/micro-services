@@ -1,8 +1,9 @@
+const gm = require('gm');
 const archiver = require('archiver');
 const { logger } = require('../../utils/logger');
 const { calculatePageRange } = require('./utils/pageRange');
 const { getImageOptions } = require('./utils/imageOptions');
-const { getPdfInfo, convertPage } = require('./utils/gmWrapper');
+const { getPdfInfo, convertPage, gmToBuffer } = require('./utils/gmWrapper');
 
 /**
  * Create a ZIP archive containing multiple images
@@ -73,7 +74,8 @@ const convertPdfToImage = async (file, params) => {
         combinedGm.out(option);
       });
       
-      return await gmToBuffer(combinedGm.setFormat(imageOptions.format));
+      combinedGm.setFormat(imageOptions.format);
+      return await gmToBuffer(combinedGm);
     } else {
       // Return zip archive for multiple pages
       return await createZipArchive(
