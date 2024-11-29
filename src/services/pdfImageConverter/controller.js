@@ -1,4 +1,4 @@
-const gm = require('gm');
+const gm = require('gm').subClass({ imageMagick: true });
 const archiver = require('archiver');
 const { logger } = require('../../utils/logger');
 const { calculatePageRange } = require('./utils/pageRange');
@@ -39,6 +39,10 @@ const createZipArchive = async (images) => {
  */
 const convertPdfToImage = async (file, params) => {
   try {
+    if (!file || !file.buffer) {
+      throw new Error('Invalid file input');
+    }
+
     const { startPage, endPage, singleFile, outputFormat, dpi, quality } = params;
     
     // Get PDF information
@@ -62,6 +66,10 @@ const convertPdfToImage = async (file, params) => {
 
     const convertedPages = await Promise.all(pagePromises);
     
+    if (!convertedPages || convertedPages.length === 0) {
+      throw new Error('No pages were converted');
+    }
+
     if (singleFile && convertedPages.length > 0) {
       // For single file output, combine all pages vertically
       const combinedGm = gm(convertedPages[0]);
@@ -70,9 +78,11 @@ const convertPdfToImage = async (file, params) => {
       }
       
       // Apply final format settings
-      imageOptions.additionalOptions.forEach(option => {
-        combinedGm.out(option);
-      });
+      if (imageOptions.additionalOptions) {
+        imageOptions.additionalOptions.forEach(option => {
+          combinedGm.out(...(Array.isArray(option) ? option : [option]));
+        });
+      }
       
       combinedGm.setFormat(imageOptions.format);
       return await gmToBuffer(combinedGm);
