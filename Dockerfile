@@ -1,14 +1,13 @@
 FROM node:18-slim
 
 # Install required dependencies and cleanup in a single layer
-RUN apt-get update && \
-    apt-get install -y \
-    graphicsmagick \
-    ghostscript \
-    imagemagick \
-    libmagickwand-dev \
-    libgs-dev \
-    && apt-get clean \
+RUN apt-get update && apt-get install -y \
+        graphicsmagick \
+        ghostscript \
+        imagemagick \
+        libmagickwand-dev \
+        libgs-dev \
+    && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Configure ImageMagick policy to allow PDF processing
@@ -22,7 +21,7 @@ RUN npm install
 COPY . .
 
 # Verify installations
-RUN gm version && convert -version
+RUN which gm && gm version && which convert && convert -version
 
 EXPOSE 3000
 
