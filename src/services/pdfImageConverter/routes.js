@@ -103,10 +103,21 @@ router.post('/convert-to-image',
   validateConvertParams,
   async (req, res) => {
     try {
+      logger.debug('Starting PDF conversion request', {
+        fileSize: req.file?.size,
+        mimeType: req.file?.mimetype,
+        params: req.body
+      });
+
       // Validate PDF before processing
       await validatePdfBuffer(req.file.buffer);
       
       const result = await convertPdfToImage(req.file, req.body);
+      
+      logger.debug('Conversion completed successfully', {
+        resultSize: result.length,
+        singleFile: req.body.singleFile
+      });
       
       if (req.body.singleFile) {
         const format = req.body.outputFormat === 'tifflzw' ? 'tiff' : 
@@ -120,7 +131,11 @@ router.post('/convert-to-image',
       res.send(result);
     } catch (error) {
       logger.error('PDF conversion error:', error);
-      res.status(500).json({ error: 'PDF conversion failed: ' + error.message });
+      const errorMessage = error.message.includes('Invalid or corrupted PDF file') ?
+        'The provided file appears to be corrupted or is not a valid PDF. Please check the file and try again.' :
+        'PDF conversion failed: ' + error.message;
+      
+      res.status(500).json({ error: errorMessage });
     }
   }
 );

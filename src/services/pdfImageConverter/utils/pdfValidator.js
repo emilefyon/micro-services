@@ -8,21 +8,29 @@ const { logger } = require('../../../utils/logger');
 const validatePdfBuffer = async (buffer) => {
   try {
     // Check if buffer exists and has content
-    if (!buffer || buffer.length === 0) {
-      throw new Error('Empty PDF buffer received');
+    if (!buffer) {
+      throw new Error('No PDF buffer received');
+    }
+    
+    if (buffer.length === 0) {
+      throw new Error('PDF buffer is empty');
     }
 
     logger.debug('Validating PDF buffer', {
       size: buffer.length,
-      firstBytes: buffer.slice(0, 10).toString('hex'),
-      lastBytes: buffer.slice(-10).toString('hex')
+      firstBytes: buffer.slice(0, 20).toString('hex'),
+      lastBytes: buffer.slice(-20).toString('hex'),
+      header: buffer.slice(0, 10).toString()
     });
 
     // Check PDF magic number (%PDF-)
     const pdfHeader = buffer.slice(0, 5).toString();
     if (pdfHeader !== '%PDF-') {
-      logger.error('Invalid PDF header', { header: pdfHeader });
-      throw new Error('Invalid PDF header');
+      logger.error('Invalid PDF header detected', { 
+        header: pdfHeader,
+        headerHex: buffer.slice(0, 5).toString('hex')
+      });
+      throw new Error('Missing PDF header marker');
     }
 
     // Check minimum viable size for a PDF (header + EOF marker)
@@ -33,21 +41,23 @@ const validatePdfBuffer = async (buffer) => {
 
     // Search for EOF marker in the last 1024 bytes
     const searchArea = buffer.slice(-1024);
-    const eofMarkers = ['%%EOF', '%EOF', '\n%%EOF', '\r%%EOF', '\r\n%%EOF'];
+    const eofMarkers = ['%%EOF', '%EOF', '\n%%EOF', '\r%%EOF', '\r\n%%EOF', '\x0D%%EOF', '\x0A%%EOF'];
     const hasEOF = eofMarkers.some(marker => 
       searchArea.toString().includes(marker)
     );
 
     if (!hasEOF) {
-      logger.warn('No standard EOF marker found, but continuing processing', {
+      logger.warn('No EOF marker found in PDF', {
         lastBytes: searchArea.slice(-20).toString('hex')
       });
+      throw new Error('Missing PDF EOF marker');
     }
 
     logger.debug('PDF validation passed', {
       size: buffer.length,
       header: pdfHeader,
-      hasEOF: hasEOF
+      hasEOF: hasEOF,
+      version: pdfHeader.slice(5).trim()
     });
   } catch (error) {
     logger.error('PDF validation failed:', error);

@@ -51,22 +51,30 @@ const cleanupTemp = async (filePath) => {
 const getPdfInfo = async (pdfBuffer) => {
   let tempPath = null;
   try {
-    // Validate PDF buffer before processing
-    await validatePdfBuffer(pdfBuffer);
-    
     // Write PDF to temporary file
     tempPath = await writeToTemp(pdfBuffer, 'pdf');
     
     // Create GM instance with PDF file
     const gmInstance = gm(tempPath);
     
+    // Add debug logging for GM command
+    logger.debug('Running GM identify command', {
+      tempPath,
+      command: gmInstance.args()
+    });
+    
     // Get PDF information
     const info = await new Promise((resolve, reject) => {
       gmInstance.identify((err, value) => {
         if (err) {
-          logger.error('PDF identification error:', err);
+          logger.error('GM identify failed:', {
+            error: err.message,
+            command: err.command,
+            output: err.output
+          });
           reject(new Error('Invalid or corrupted PDF file'));
         } else {
+          logger.debug('GM identify succeeded', { info: value });
           resolve(value);
         }
       });
@@ -100,19 +108,25 @@ const getPdfInfo = async (pdfBuffer) => {
 const convertPage = async (pdfBuffer, pageNumber, options) => {
   let tempPath = null;
   try {
-    // Validate PDF buffer before processing
-    await validatePdfBuffer(pdfBuffer);
-
     // Write PDF to temporary file
     tempPath = await writeToTemp(pdfBuffer, 'pdf');
     
     const { format, additionalOptions, dpi } = options;
     
+    // Add debug logging for conversion
+    logger.debug('Starting page conversion', {
+      pageNumber,
+      format,
+      dpi,
+      tempPath
+    });
+    
     // Create GM instance with specific page
     let pageGm = gm(tempPath + `[${pageNumber}]`)
       .density(dpi, dpi)
       .setFormat(format)
-      .quality(options.quality || 90);
+      .quality(options.quality || 90)
+      .strip(); // Remove metadata to reduce size
 
     // Apply additional format-specific options
     if (additionalOptions && additionalOptions.length > 0) {
@@ -124,12 +138,17 @@ const convertPage = async (pdfBuffer, pageNumber, options) => {
     // Convert to buffer
     const buffer = await gmToBuffer(pageGm);
     if (!buffer || buffer.length === 0) {
-      throw new Error('Conversion produced empty buffer');
+      throw new Error(`Conversion produced empty buffer for page ${pageNumber}`);
     }
 
     return buffer;
   } catch (error) {
-    logger.error(`Error converting page ${pageNumber}:`, error);
+    logger.error('Error converting page:', {
+      pageNumber,
+      error: error.message,
+      command: error.command,
+      output: error.output
+    });
     throw new Error(`Failed to convert page ${pageNumber}: ${error.message}`);
   } finally {
     if (tempPath) {
