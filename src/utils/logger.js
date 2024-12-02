@@ -1,10 +1,14 @@
 const winston = require('winston');
 
 const logger = winston.createLogger({
-  level: 'info',
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.json()
+    winston.format.printf(({ level, message, timestamp, ...meta }) => {
+      const metaStr = Object.keys(meta).length ? 
+        '\n' + JSON.stringify(meta, null, 2) : '';
+      return `${timestamp} ${level}: ${message}${metaStr}`;
+    })
   ),
   transports: [
     new winston.transports.File({ filename: 'error.log', level: 'error' }),
@@ -14,7 +18,15 @@ const logger = winston.createLogger({
 
 if (process.env.NODE_ENV !== 'production') {
   logger.add(new winston.transports.Console({
-    format: winston.format.simple()
+    format: winston.format.combine(
+      winston.format.colorize(),
+      winston.format.timestamp(),
+      winston.format.printf(({ level, message, timestamp, ...meta }) => {
+        const metaStr = Object.keys(meta).length ? 
+          '\n' + JSON.stringify(meta, null, 2) : '';
+        return `${timestamp} ${level}: ${message}${metaStr}`;
+      })
+    )
   }));
 }
 
