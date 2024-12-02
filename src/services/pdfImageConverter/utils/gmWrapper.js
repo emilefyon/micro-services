@@ -65,43 +65,42 @@ const getPdfInfo = async (pdfBuffer) => {
     const info = await new Promise((resolve, reject) => {
       // Set a timeout for the operation
       const timeoutId = setTimeout(() => {
-        reject(new Error('PDF identification timed out after 30 seconds'));
-      }, 30000);
+        reject(new Error('PDF identification timed out after 60 seconds'));
+      }, 60000);
 
-      gmInstance.identify((err, value) => {
+      // Force first page only for identification
+      gmInstance.identify('%p %n\n', (err, value) => {
         clearTimeout(timeoutId);
         if (err) {
           logger.error('Failed to identify PDF:', {
             error: err.toString(),
             command: gmInstance.args().join(' ')
           });
-          reject(new Error('Invalid or corrupted PDF file'));
+          reject(new Error('Could not read PDF file'));
         } else {
+          // Parse the output to get page count
+          const match = value.toString().match(/(\d+) pages?/i);
+          const pageCount = match ? parseInt(match[1], 10) : null;
+
           logger.debug('PDF identification successful', {
-            pages: value.numberOfPages,
-            format: value.format,
-            size: value.size
+            rawOutput: value,
+            pageCount: pageCount
           });
-          resolve(value);
+          
+          if (!pageCount) {
+            reject(new Error('Could not determine page count from PDF'));
+          }
+          
+          resolve({
+            numberOfPages: pageCount,
+            format: 'PDF',
+            size: pdfBuffer.length
+          });
         }
       });
     });
 
-    // Parse page count from info
-    if (!info || typeof info.numberOfPages === 'undefined') {
-      throw new Error('Could not determine PDF page count');
-    }
-
-    const pageCount = parseInt(info.numberOfPages, 10);
-    if (isNaN(pageCount) || pageCount < 1) {
-      throw new Error('Invalid page count detected');
-    }
-
-    return {
-      numberOfPages: pageCount,
-      format: 'PDF',
-      size: pdfBuffer.length
-    };
+    return info;
 
   } catch (error) {
     logger.error('Error getting PDF info:', error);
