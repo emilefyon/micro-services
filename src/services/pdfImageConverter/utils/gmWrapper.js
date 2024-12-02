@@ -61,12 +61,15 @@ const getPdfInfo = async (pdfBuffer) => {
     // Create GM instance with PDF file
     const gmInstance = gm(tempPath);
     
-    // Set timeout for identify operation
-    gmInstance.timeout(30000);
-    
     // Get PDF information
     const info = await new Promise((resolve, reject) => {
+      // Set a timeout for the operation
+      const timeoutId = setTimeout(() => {
+        reject(new Error('PDF identification timed out after 30 seconds'));
+      }, 30000);
+
       gmInstance.identify((err, value) => {
+        clearTimeout(timeoutId);
         if (err) {
           logger.error('Failed to identify PDF:', {
             error: err.toString(),
@@ -130,9 +133,7 @@ const convertPage = async (pdfBuffer, pageNumber, options) => {
     let pageGm = gm(pageSelector)
       .density(dpi, dpi)
       .setFormat(format)
-      .quality(options.quality || 90)
-      .strip()
-      .timeout(60000); // Increase timeout for conversion
+      .quality(options.quality || 90);
 
     // Apply additional format-specific options
     if (additionalOptions && additionalOptions.length > 0) {
@@ -148,7 +149,19 @@ const convertPage = async (pdfBuffer, pageNumber, options) => {
       command: pageGm.args().join(' ')
     });
 
-    const buffer = await gmToBuffer(pageGm);
+    const buffer = await new Promise((resolve, reject) => {
+      // Set a timeout for the conversion
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Page conversion timed out after 60 seconds'));
+      }, 60000);
+
+      pageGm.toBuffer((err, buffer) => {
+        clearTimeout(timeoutId);
+        if (err) reject(err);
+        else resolve(buffer);
+      });
+    });
+
     if (!buffer || buffer.length === 0) {
       throw new Error(`Conversion produced empty buffer for page ${pageNumber}`);
     }
