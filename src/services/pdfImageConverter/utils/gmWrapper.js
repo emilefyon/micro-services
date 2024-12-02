@@ -1,6 +1,9 @@
 const gm = require('gm').subClass({ imageMagick: true });
-const { promisify } = require('util');
+const fs = require('fs').promises;
+const os = require('os');
+const path = require('path');
 const { logger } = require('../../../utils/logger');
+const { validatePdfBuffer } = require('./pdfValidator');
 
 /**
  * Promisified version of GraphicsMagick's toBuffer
@@ -17,17 +20,48 @@ const gmToBuffer = async (gmObject) => {
 };
 
 /**
+ * Write buffer to temporary file
+ * @param {Buffer} buffer - File buffer
+ * @param {string} extension - File extension
+ * @returns {Promise<string>} Temporary file path
+ */
+const writeToTemp = async (buffer, extension) => {
+  const tempPath = path.join(os.tmpdir(), `pdf-${Date.now()}.${extension}`);
+  await fs.writeFile(tempPath, buffer);
+  return tempPath;
+};
+
+/**
+ * Clean up temporary file
+ * @param {string} filePath - File path to remove
+ */
+const cleanupTemp = async (filePath) => {
+  try {
+    await fs.unlink(filePath);
+  } catch (error) {
+    logger.warn('Failed to cleanup temp file:', error);
+  }
+};
+
+/**
  * Get PDF information using GraphicsMagick
  * @param {Buffer} pdfBuffer - PDF file buffer
  * @returns {Promise<Object>} PDF information
  */
 const getPdfInfo = async (pdfBuffer) => {
+  let tempPath = null;
   try {
-    // Create a temporary GM instance with PDF input
-    const gmInstance = gm(pdfBuffer, 'input.pdf[0]');
+    // Validate PDF buffer before processing
+    await validatePdfBuffer(pdfBuffer);
     
-    // First, verify the PDF is readable
-    await new Promise((resolve, reject) => {
+    // Write PDF to temporary file
+    tempPath = await writeToTemp(pdfBuffer, 'pdf');
+    
+    // Create GM instance with PDF file
+    const gmInstance = gm(tempPath);
+    
+    // Get PDF information
+    const info = await new Promise((resolve, reject) => {
       gmInstance.identify((err, value) => {
         if (err) {
           logger.error('PDF identification error:', err);
@@ -38,19 +72,8 @@ const getPdfInfo = async (pdfBuffer) => {
       });
     });
 
-    // Now get the page count
-    const pageCount = await new Promise((resolve, reject) => {
-      gm(pdfBuffer, 'input.pdf').identify('%n', (err, value) => {
-        if (err) {
-          logger.error('Page count error:', err);
-          reject(new Error('Could not determine page count'));
-        } else {
-          // Parse the page count, default to 1 if parsing fails
-          const count = parseInt(value) || 1;
-          resolve(count);
-        }
-      });
-    });
+    // Parse page count from info
+    const pageCount = info.numberOfPages || 1;
 
     return {
       numberOfPages: pageCount,
@@ -60,6 +83,10 @@ const getPdfInfo = async (pdfBuffer) => {
   } catch (error) {
     logger.error('Error getting PDF info:', error);
     throw new Error('Failed to read PDF information: ' + error.message);
+  } finally {
+    if (tempPath) {
+      await cleanupTemp(tempPath);
+    }
   }
 };
 
@@ -71,11 +98,18 @@ const getPdfInfo = async (pdfBuffer) => {
  * @returns {Promise<Buffer>} Converted image buffer
  */
 const convertPage = async (pdfBuffer, pageNumber, options) => {
+  let tempPath = null;
   try {
+    // Validate PDF buffer before processing
+    await validatePdfBuffer(pdfBuffer);
+
+    // Write PDF to temporary file
+    tempPath = await writeToTemp(pdfBuffer, 'pdf');
+    
     const { format, additionalOptions, dpi } = options;
     
     // Create GM instance with specific page
-    let pageGm = gm(pdfBuffer, `input.pdf[${pageNumber}]`)
+    let pageGm = gm(tempPath + `[${pageNumber}]`)
       .density(dpi, dpi)
       .setFormat(format)
       .quality(options.quality || 90);
@@ -97,6 +131,10 @@ const convertPage = async (pdfBuffer, pageNumber, options) => {
   } catch (error) {
     logger.error(`Error converting page ${pageNumber}:`, error);
     throw new Error(`Failed to convert page ${pageNumber}: ${error.message}`);
+  } finally {
+    if (tempPath) {
+      await cleanupTemp(tempPath);
+    }
   }
 };
 

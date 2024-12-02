@@ -1,5 +1,6 @@
 const express = require('express');
 const multer = require('multer');
+const { validatePdfBuffer } = require('./utils/pdfValidator');
 const { validateConvertParams } = require('./validators');
 const { convertPdfToImage } = require('./controller');
 const { logger } = require('../../utils/logger');
@@ -102,6 +103,9 @@ router.post('/convert-to-image',
   validateConvertParams,
   async (req, res) => {
     try {
+      // Validate PDF before processing
+      await validatePdfBuffer(req.file.buffer);
+      
       const result = await convertPdfToImage(req.file, req.body);
       
       if (req.body.singleFile) {
