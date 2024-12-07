@@ -4,6 +4,7 @@ const { getPdfInfo } = require('./utils/pdfInfo');
 const { calculatePageRange } = require('./utils/pageRange');
 const { getImageOptions } = require('./utils/imageOptions');
 const { convertPageToImage, combineImages } = require('./utils/sharpWrapper');
+const { renderPdfPageToImage } = require('./utils/pdfRenderer');
 const { PDFDocument } = require('pdf-lib');
 
 /**
@@ -57,20 +58,16 @@ const convertPdfToImage = async (file, params) => {
     const imageOptions = getImageOptions(outputFormat, quality, backgroundColor);
     imageOptions.dpi = dpi;
 
-    // Extract pages from PDF
-    const pdfDoc = await PDFDocument.load(file.buffer);
-    const pages = [];
-    
-    for (let i = start; i <= end; i++) {
-      const newPdf = await PDFDocument.create();
-      const [page] = await newPdf.copyPages(pdfDoc, [i]);
-      newPdf.addPage(page);
-      pages.push(await newPdf.save());
-    }
+    // Render PDF pages to images
+    const renderedPages = await Promise.all(
+      Array.from({ length: end - start + 1 }, (_, i) =>
+        renderPdfPageToImage(file.buffer, start + i, dpi)
+      )
+    );
 
     // Convert pages
     const convertedPages = await Promise.all(
-      pages.map(pageBuffer => convertPageToImage(pageBuffer, imageOptions))
+      renderedPages.map(pageBuffer => convertPageToImage(pageBuffer, imageOptions))
     );
 
     if (!convertedPages || convertedPages.length === 0) {
