@@ -79,7 +79,7 @@ const getPdfInfo = async (pdfBuffer) => {
     // Get PDF information with improved parsing
     const info = await new Promise((resolve, reject) => {
       // Force first page only for identification
-      gmInstance.identify((err, value) => {
+      gmInstance.identify('%n', (err, value) => {
         if (err) {
           logger.error('Failed to identify PDF:', {
             error: err.toString(),
@@ -87,21 +87,13 @@ const getPdfInfo = async (pdfBuffer) => {
           });
           reject(new Error('Could not read PDF file'));
         } else {
-          // Enhanced page count detection
-          let pageCount = null;
-          
-          if (value && value.Properties && value.Properties['pdf:Pages']) {
-            pageCount = parseInt(value.Properties['pdf:Pages'], 10);
-          } else if (value && value.Pages) {
-            pageCount = parseInt(value.Pages, 10);
-          }
+          const pageCount = parseInt(value, 10);
 
           logger.debug('PDF identification successful', {
-            metadata: value,
             pageCount: pageCount
           });
           
-          if (!pageCount) {
+          if (!pageCount || isNaN(pageCount)) {
             reject(new Error('Could not determine page count from PDF'));
             return;
           }
@@ -109,22 +101,20 @@ const getPdfInfo = async (pdfBuffer) => {
           resolve({
             numberOfPages: pageCount,
             format: 'PDF',
-            size: pdfBuffer.length,
-            metadata: value
+            size: pdfBuffer.length
           });
         }
       });
+    }).finally(async () => {
+      if (tempPath) {
+        await cleanupTemp(tempPath);
+      }
     });
-
+    
     return info;
-
   } catch (error) {
     logger.error('Error getting PDF info:', error);
     throw new Error('Failed to read PDF information: ' + error.message);
-  } finally {
-    if (tempPath) {
-      await cleanupTemp(tempPath);
-    }
   }
 };
 
