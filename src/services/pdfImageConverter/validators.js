@@ -70,7 +70,15 @@ const convertParamsSchema = Joi.object({
         * High quality: 80-90
         * Medium quality: 60-75
         * Low quality: 30-50
-      - Only affects JPEG output`)
+      - Only affects JPEG output`),
+    
+  backgroundColor: Joi.string()
+    .pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
+    .default('#FFFFFF')
+    .description(`Background color in hex format.
+      - Format: #RGB or #RRGGBB
+      - Default: #FFFFFF (white)
+      - Examples: #FFF, #F5F5F5, #000000`)
 });
 
 const validateConvertParams = async (req, res, next) => {

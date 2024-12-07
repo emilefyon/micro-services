@@ -77,6 +77,8 @@ const convertPage = async (pdfBuffer, pageNumber, options) => {
     const pageSelector = `${tempPath}[${pageNumber}]`;
     let pageGm = gm(pageSelector)
       .density(dpi, dpi)
+      .background(options.backgroundColor)
+      .flatten() // Ensures background color is applied
       .setFormat(format)
       .quality(options.quality || 90);
 

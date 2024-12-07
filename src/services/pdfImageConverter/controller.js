@@ -44,7 +44,7 @@ const convertPdfToImage = async (file, params) => {
       throw new Error('Invalid file input');
     }
 
-    const { startPage, endPage, singleFile, outputFormat, dpi, quality } = params;
+    const { startPage, endPage, singleFile, outputFormat, dpi, quality, backgroundColor } = params;
     
     // Get PDF information
     const pdfInfo = await getPdfInfo(file.buffer);
@@ -55,7 +55,7 @@ const convertPdfToImage = async (file, params) => {
     
     // Get format-specific options
     const imageOptions = {
-      ...getImageOptions(outputFormat, quality),
+      ...getImageOptions(outputFormat, quality, backgroundColor),
       dpi
     };
 
