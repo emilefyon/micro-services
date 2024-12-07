@@ -5,7 +5,8 @@ WORKDIR /app
 # Install system dependencies for canvas
 RUN apt-get update && \
     apt-get install -y \
-    poppler-utils && \
+    poppler-utils \
+    sqlite3 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -16,6 +17,10 @@ RUN npm install
 # Create and set permissions for temp directory
 RUN mkdir -p /tmp/pdf-converter && \
     chmod 777 /tmp/pdf-converter
+
+# Create and set permissions for file storage
+RUN mkdir -p /data/files && \
+    chmod 777 /data/files
 
 # Copy the rest of the application
 COPY . .
