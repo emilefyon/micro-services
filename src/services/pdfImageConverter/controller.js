@@ -1,9 +1,10 @@
 const gm = require('gm').subClass({ imageMagick: true });
 const archiver = require('archiver');
 const { logger } = require('../../utils/logger');
+const { getPdfInfo } = require('./utils/pdfInfo');
 const { calculatePageRange } = require('./utils/pageRange');
 const { getImageOptions } = require('./utils/imageOptions');
-const { getPdfInfo, convertPage, gmToBuffer } = require('./utils/gmWrapper');
+const { convertPage, gmToBuffer } = require('./utils/gmWrapper');
 
 /**
  * Create a ZIP archive containing multiple images

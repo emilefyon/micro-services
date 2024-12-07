@@ -3,7 +3,7 @@ const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
 const { logger } = require('../../../utils/logger');
-
+const { getPdfInfo } = require('./pdfInfo');
 // Ensure tmp directory exists and is writable
 const TMP_DIR = '/tmp/pdf-converter';
 
@@ -55,66 +55,6 @@ const cleanupTemp = async (filePath) => {
     logger.debug('Cleaned up temporary file:', { path: filePath });
   } catch (error) {
     logger.warn('Failed to cleanup temp file:', error);
-  }
-};
-
-/**
- * Get PDF information using GraphicsMagick
- * @param {Buffer} pdfBuffer - PDF file buffer
- * @returns {Promise<Object>} PDF information
- */
-const getPdfInfo = async (pdfBuffer) => {
-  let tempPath = null;
-  try {
-    // Ensure buffer exists and has content
-    if (!pdfBuffer || pdfBuffer.length === 0) {
-      throw new Error('Invalid PDF buffer');
-    }
-
-    tempPath = await writeToTemp(pdfBuffer, 'pdf');
-    
-    // Create GM instance with PDF file
-    const gmInstance = gm(tempPath);
-    
-    // Get PDF information with improved parsing
-    const info = await new Promise((resolve, reject) => {
-      // Force first page only for identification
-      gmInstance.identify('%n', (err, value) => {
-        if (err) {
-          logger.error('Failed to identify PDF:', {
-            error: err.toString(),
-            command: gmInstance.args().join(' ')
-          });
-          reject(new Error('Could not read PDF file'));
-        } else {
-          const pageCount = parseInt(value, 10);
-
-          logger.debug('PDF identification successful', {
-            pageCount: pageCount
-          });
-          
-          if (!pageCount || isNaN(pageCount)) {
-            reject(new Error('Could not determine page count from PDF'));
-            return;
-          }
-          
-          resolve({
-            numberOfPages: pageCount,
-            format: 'PDF',
-            size: pdfBuffer.length
-          });
-        }
-      });
-    }).finally(async () => {
-      if (tempPath) {
-        await cleanupTemp(tempPath);
-      }
-    });
-    
-    return info;
-  } catch (error) {
-    logger.error('Error getting PDF info:', error);
-    throw new Error('Failed to read PDF information: ' + error.message);
   }
 };
 
@@ -193,6 +133,5 @@ const convertPage = async (pdfBuffer, pageNumber, options) => {
 
 module.exports = {
   gmToBuffer,
-  getPdfInfo,
   convertPage
 };
