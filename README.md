@@ -16,8 +16,7 @@ A scalable microservices backend architecture built with Node.js, designed for r
 ### Prerequisites
 
 - Node.js 18 or higher
-- GraphicsMagick (`gm`)
-- Ghostscript
+- Poppler Utils (`poppler-utils`)
 
 ### Installation
 
@@ -53,6 +52,14 @@ docker build -t microservices-backend .
 docker run -p 3000:3000 microservices-backend
 ```
 
+### System Dependencies
+
+The PDF conversion service requires Poppler Utils for high-quality PDF to image conversion:
+
+- Ubuntu/Debian: `apt-get install poppler-utils`
+- macOS: `brew install poppler`
+- Windows: Download from [Poppler for Windows](http://blog.alivate.com.au/poppler-windows/)
+
 ## API Documentation
 
 API documentation is available at `/api-docs` when the server is running. The OpenAPI specification can be accessed at `/openapi.json`.
@@ -72,29 +79,25 @@ POST /api/v1/pdf/convert-to-image
 | Parameter    | Type    | Default | Description                                    |
 |-------------|---------|---------|------------------------------------------------|
 | file        | File    | -       | PDF file to convert (max 10MB)                 |
-| startPage   | Number  | 0       | First page to convert (0-based index)          |
-| endPage     | Number  | 0       | Last page to convert (0 = until last page)     |
-| singleFile  | Boolean | true    | Combine all pages into a single image          |
-| outputFormat| String  | png16m  | Output format (see below)                      |
-| dpi         | Number  | 150     | Resolution (72-600)                            |
-| quality     | Number  | 90      | JPEG quality (1-100)                           |
-| backgroundColor| String  | #FFFFFF | Background color in hex format (#RGB or #RRGGBB)|
+| startPage   | Number  | 0       | First page to convert (0-based index)           |
+| endPage     | Number  | 0       | Last page to convert (0 = until last page)      |
+| singleFile  | Boolean | true    | Combine all pages into a single vertical image  |
+| outputFormat| String  | png     | Output format (png, jpeg)                       |
+| dpi         | Number  | 150     | Resolution (72-600)                             |
+| quality     | Number  | 90      | JPEG quality (1-100)                            |
+| backgroundColor| String| #FFFFFF| Background color in hex format (#RGB or #RRGGBB) |
 
 #### Output Formats
 
-- `tifflzw`: TIFF with LZW compression (best for documents)
-- `jpeg`: JPEG format with configurable quality (best for photos)
-- `pnggray`: PNG grayscale 8-bit (best for black and white)
-- `png256`: PNG with 256 colors (good balance)
-- `png16`: PNG with 16 colors (smallest file size)
-- `png16m`: PNG with millions of colors (best quality)
+- `png`: High-quality PNG format (default)
+- `jpeg`: JPEG format with configurable quality
 
 #### Example Request
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/pdf/convert-to-image \
   -F "file=@document.pdf" \
-  -F "outputFormat=png256" \
+  -F "outputFormat=png" \
   -F "dpi=150" \
   -F "singleFile=true" \
   -F "backgroundColor=#F5F5F5"
@@ -109,6 +112,7 @@ curl -X POST http://localhost:3000/api/v1/pdf/convert-to-image \
 │   ├── middleware/       # Shared middleware
 │   ├── routes/          # Route definitions
 │   ├── services/        # Microservices
+│   │   └── pdfImageConverter/  # PDF to Image conversion service
 │   └── utils/           # Shared utilities
 ├── Dockerfile           # Docker configuration
 └── package.json         # Project dependencies
