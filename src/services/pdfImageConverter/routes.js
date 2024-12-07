@@ -67,6 +67,15 @@ const upload = multer({
  *                 maximum: 100
  *                 default: 90
  *                 description: Image quality for JPEG format. Higher values mean better quality but larger files
+ *               backgroundColor:
+ *                 type: string
+ *                 pattern: '^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$'
+ *                 default: '#FFFFFF'
+ *                 description: |
+ *                   Background color in hex format:
+ *                   * Format: #RGB or #RRGGBB
+ *                   * Default: #FFFFFF (white)
+ *                   * Examples: #FFF, #F5F5F5, #000000
  *     responses:
  *       200:
  *         description: PDF successfully converted to image(s)
