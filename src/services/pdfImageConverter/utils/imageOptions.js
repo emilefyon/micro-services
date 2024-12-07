@@ -5,34 +5,31 @@
  * @param {string} backgroundColor - Background color in hex format
  * @returns {Object} Format-specific options
  */
-const getImageOptions = (format, quality, backgroundColor) => {
+const getImageOptions = (format, quality, backgroundColor = '#FFFFFF') => {
   const options = {
     format: 'PNG',
     quality: quality,
-    additionalOptions: [],
     backgroundColor: backgroundColor || '#FFFFFF'
   };
 
   switch (format) {
     case 'tifflzw':
       options.format = 'TIFF';
-      options.additionalOptions.push('-compress', 'LZW');
       break;
     case 'jpeg':
       options.format = 'JPEG';
-      options.additionalOptions.push('-quality', quality.toString());
       break;
     case 'pnggray':
       options.format = 'PNG';
-      options.additionalOptions.push('-type', 'Grayscale');
+      options.grayscale = true;
       break;
     case 'png256':
       options.format = 'PNG';
-      options.additionalOptions.push('-colors', '256');
+      options.colors = 256;
       break;
     case 'png16':
       options.format = 'PNG';
-      options.additionalOptions.push('-colors', '16');
+      options.colors = 16;
       break;
     case 'png16m':
       options.format = 'PNG';
