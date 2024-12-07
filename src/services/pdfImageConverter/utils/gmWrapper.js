@@ -2,7 +2,20 @@ const gm = require('gm').subClass({ imageMagick: true });
 const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
-const { logger } = require('../../../utils/logger'); 
+const { logger } = require('../../../utils/logger');
+
+// Ensure tmp directory exists and is writable
+const TMP_DIR = '/tmp/pdf-converter';
+
+const ensureTmpDir = async () => {
+  try {
+    await fs.mkdir(TMP_DIR, { recursive: true });
+    logger.debug('Temporary directory created:', { path: TMP_DIR });
+  } catch (error) {
+    logger.error('Failed to create temporary directory:', error);
+    throw new Error('Could not create temporary directory');
+  }
+};
 
 /**
  * Promisified version of GraphicsMagick's toBuffer
@@ -25,7 +38,8 @@ const gmToBuffer = async (gmObject) => {
  * @returns {Promise<string>} Temporary file path
  */
 const writeToTemp = async (buffer, extension) => {
-  const tempPath = path.join(os.tmpdir(), `pdf-${Date.now()}.${extension}`);
+  await ensureTmpDir();
+  const tempPath = path.join(TMP_DIR, `pdf-${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`);
   await fs.writeFile(tempPath, buffer);
   logger.debug('Wrote temporary file', { path: tempPath, size: buffer.length });
   return tempPath;
@@ -38,6 +52,7 @@ const writeToTemp = async (buffer, extension) => {
 const cleanupTemp = async (filePath) => {
   try {
     await fs.unlink(filePath);
+    logger.debug('Cleaned up temporary file:', { path: filePath });
   } catch (error) {
     logger.warn('Failed to cleanup temp file:', error);
   }
@@ -61,16 +76,10 @@ const getPdfInfo = async (pdfBuffer) => {
     // Create GM instance with PDF file
     const gmInstance = gm(tempPath);
     
-    // Get PDF information
+    // Get PDF information with improved parsing
     const info = await new Promise((resolve, reject) => {
-      // Set a timeout for the operation
-      const timeoutId = setTimeout(() => {
-        reject(new Error('PDF identification timed out after 60 seconds'));
-      }, 60000);
-
       // Force first page only for identification
-      gmInstance.identify('%p %n\n', (err, value) => {
-        clearTimeout(timeoutId);
+      gmInstance.identify((err, value) => {
         if (err) {
           logger.error('Failed to identify PDF:', {
             error: err.toString(),
@@ -78,23 +87,30 @@ const getPdfInfo = async (pdfBuffer) => {
           });
           reject(new Error('Could not read PDF file'));
         } else {
-          // Parse the output to get page count
-          const match = value.toString().match(/(\d+) pages?/i);
-          const pageCount = match ? parseInt(match[1], 10) : null;
+          // Enhanced page count detection
+          let pageCount = null;
+          
+          if (value && value.Properties && value.Properties['pdf:Pages']) {
+            pageCount = parseInt(value.Properties['pdf:Pages'], 10);
+          } else if (value && value.Pages) {
+            pageCount = parseInt(value.Pages, 10);
+          }
 
           logger.debug('PDF identification successful', {
-            rawOutput: value,
+            metadata: value,
             pageCount: pageCount
           });
           
           if (!pageCount) {
             reject(new Error('Could not determine page count from PDF'));
+            return;
           }
           
           resolve({
             numberOfPages: pageCount,
             format: 'PDF',
-            size: pdfBuffer.length
+            size: pdfBuffer.length,
+            metadata: value
           });
         }
       });
