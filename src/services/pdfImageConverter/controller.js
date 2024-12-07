@@ -1,10 +1,10 @@
-const gm = require('gm').subClass({ imageMagick: true });
 const archiver = require('archiver');
 const { logger } = require('../../utils/logger');
 const { getPdfInfo } = require('./utils/pdfInfo');
 const { calculatePageRange } = require('./utils/pageRange');
 const { getImageOptions } = require('./utils/imageOptions');
-const { convertPage, gmToBuffer } = require('./utils/gmWrapper');
+const { convertPageToImage, combineImages } = require('./utils/sharpWrapper');
+const { PDFDocument } = require('pdf-lib');
 
 /**
  * Create a ZIP archive containing multiple images
@@ -54,39 +54,31 @@ const convertPdfToImage = async (file, params) => {
     const { start, end } = calculatePageRange(startPage, endPage, pdfInfo.numberOfPages);
     
     // Get format-specific options
-    const imageOptions = {
-      ...getImageOptions(outputFormat, quality, backgroundColor),
-      dpi
-    };
+    const imageOptions = getImageOptions(outputFormat, quality, backgroundColor);
+    imageOptions.dpi = dpi;
 
-    // Convert pages
-    const pagePromises = [];
+    // Extract pages from PDF
+    const pdfDoc = await PDFDocument.load(file.buffer);
+    const pages = [];
+    
     for (let i = start; i <= end; i++) {
-      pagePromises.push(convertPage(file.buffer, i, imageOptions));
+      const newPdf = await PDFDocument.create();
+      const [page] = await newPdf.copyPages(pdfDoc, [i]);
+      newPdf.addPage(page);
+      pages.push(await newPdf.save());
     }
 
-    const convertedPages = await Promise.all(pagePromises);
-    
+    // Convert pages
+    const convertedPages = await Promise.all(
+      pages.map(pageBuffer => convertPageToImage(pageBuffer, imageOptions))
+    );
+
     if (!convertedPages || convertedPages.length === 0) {
       throw new Error('No pages were converted');
     }
 
     if (singleFile && convertedPages.length > 0) {
-      // For single file output, combine all pages vertically
-      const combinedGm = gm(convertedPages[0]);
-      for (let i = 1; i < convertedPages.length; i++) {
-        combinedGm.append(convertedPages[i]);
-      }
-      
-      // Apply final format settings
-      if (imageOptions.additionalOptions) {
-        imageOptions.additionalOptions.forEach(option => {
-          combinedGm.out(...(Array.isArray(option) ? option : [option]));
-        });
-      }
-      
-      combinedGm.setFormat(imageOptions.format);
-      return await gmToBuffer(combinedGm);
+      return await combineImages(convertedPages, imageOptions);
     } else {
       // Return zip archive for multiple pages
       return await createZipArchive(
