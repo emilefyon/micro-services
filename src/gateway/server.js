@@ -8,6 +8,7 @@ const { errorHandler } = require('../middleware/errorHandler');
 const { logger } = require('../utils/logger');
 const authRoutes = require('../routes/auth.routes');
 const pdfConverterRoutes = require('../services/pdfImageConverter/routes');
+const fileStorageRoutes = require('../services/fileStorage/routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -65,6 +66,7 @@ app.get('/openapi.json', (req, res) => {
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/pdf', pdfConverterRoutes);
+app.use('/api/v1/files', fileStorageRoutes);
 
 // Error handling
 app.use(errorHandler);
